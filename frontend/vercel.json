@@ -7,11 +7,11 @@
     }
   ],
   "env": {
-    "NEXT_PUBLIC_API_URL": "@api-url"
+    "NEXT_PUBLIC_API_URL": "https://deep-search-backend.onrender.com"
   },
   "build": {
     "env": {
-      "NEXT_PUBLIC_API_URL": "@api-url"
+      "NEXT_PUBLIC_API_URL": "https://deep-search-backend.onrender.com"
     }
   }
 }
