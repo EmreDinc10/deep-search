@@ -1,0 +1,14 @@
+# Backend requirements
+fastapi==0.104.1
+uvicorn==0.24.0
+python-dotenv==1.0.0
+openai==1.3.7
+googlesearch-python==1.2.3
+duckduckgo-search==3.9.6
+wikipedia==1.4.0
+praw==7.7.1
+httpx==0.25.2
+asyncio-throttle==1.0.2
+pydantic==2.9.2
+python-multipart==0.0.6
+fastapi-cors==0.0.6
