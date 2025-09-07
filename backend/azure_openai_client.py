@@ -57,7 +57,7 @@ class AzureOpenAIClient:
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.7,
-                max_completion_tokens=2000
+                max_tokens=2000
             )
             
             return response.choices[0].message.content
@@ -115,7 +115,7 @@ class AzureOpenAIClient:
                         {"role": "user", "content": insight_prompt}
                     ],
                     temperature=0.5,
-                    max_completion_tokens=300
+                    max_tokens=300
                 )
                 
                 insights["ai_analysis"] = response.choices[0].message.content
