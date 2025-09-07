@@ -13,3 +13,6 @@ asyncio-throttle==1.0.2
 pydantic==2.9.2
 python-multipart==0.0.6
 fastapi-cors==0.0.6
+
+# Optional Google Custom Search
+google-api-python-client==2.108.0

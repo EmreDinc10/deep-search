@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 import logging
 
 # Import search libraries
-from googlesearch import search as google_search
 from duckduckgo_search import DDGS
 import wikipedia
 import praw
@@ -25,97 +24,228 @@ class SearchModule(ABC):
         pass
 
 class GoogleSearchModule(SearchModule):
-    """Google search using alternative approach with requests and parsing"""
+    """Google search using multiple fallback strategies"""
     
     def __init__(self):
         super().__init__(SearchSource.GOOGLE)
     
     async def search(self, query: str, max_results: int = 5) -> List[SearchResult]:
         try:
-            import requests
+            import os
+            import json
+            import httpx
             from urllib.parse import quote_plus
-            import re
-            import time
             
             results = []
             loop = asyncio.get_event_loop()
             
-            def run_google_search():
+            # Strategy 1: Google Custom Search API (if credentials available)
+            async def try_google_api():
+                google_api_key = os.getenv('GOOGLE_API_KEY')
+                google_cse_id = os.getenv('GOOGLE_CSE_ID')
+                
+                if google_api_key and google_cse_id:
+                    try:
+                        api_url = "https://www.googleapis.com/customsearch/v1"
+                        params = {
+                            'key': google_api_key,
+                            'cx': google_cse_id,
+                            'q': query,
+                            'num': min(max_results, 10)
+                        }
+                        
+                        async with httpx.AsyncClient(timeout=10) as client:
+                            response = await client.get(api_url, params=params)
+                            
+                        if response.status_code == 200:
+                            data = response.json()
+                            api_results = []
+                            
+                            for item in data.get('items', [])[:max_results]:
+                                api_results.append(SearchResult(
+                                    source=self.source,
+                                    title=item.get('title', 'Google Result'),
+                                    url=item.get('link', ''),
+                                    snippet=item.get('snippet', 'No snippet available')
+                                ))
+                            
+                            logger.info(f"Google API search successful: {len(api_results)} results")
+                            return api_results
+                    except Exception as e:
+                        logger.warning(f"Google API search failed: {e}")
+                return []
+            
+            # Strategy 2: SerpAPI (alternative Google search API)
+            async def try_serpapi():
+                serpapi_key = os.getenv('SERPAPI_KEY')
+                
+                if serpapi_key:
+                    try:
+                        serpapi_url = "https://serpapi.com/search"
+                        params = {
+                            'api_key': serpapi_key,
+                            'engine': 'google',
+                            'q': query,
+                            'num': max_results
+                        }
+                        
+                        async with httpx.AsyncClient(timeout=10) as client:
+                            response = await client.get(serpapi_url, params=params)
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            serp_results = []
+                            
+                            for item in data.get('organic_results', [])[:max_results]:
+                                serp_results.append(SearchResult(
+                                    source=self.source,
+                                    title=item.get('title', 'Google Result'),
+                                    url=item.get('link', ''),
+                                    snippet=item.get('snippet', 'No snippet available')
+                                ))
+                            
+                            logger.info(f"SerpAPI search successful: {len(serp_results)} results")
+                            return serp_results
+                    except Exception as e:
+                        logger.warning(f"SerpAPI search failed: {e}")
+                return []
+            
+            # Strategy 3: Improved web scraping with rotating user agents
+            def try_web_scraping():
                 try:
-                    # Use a more reliable approach with requests
+                    import requests
+                    import random
+                    from urllib.parse import quote_plus
+                    import re
+                    import time
+                    
+                    user_agents = [
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
+                    ]
+                    
                     headers = {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'User-Agent': random.choice(user_agents),
                         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                         'Accept-Language': 'en-US,en;q=0.5',
                         'Accept-Encoding': 'gzip, deflate',
                         'Connection': 'keep-alive',
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
                     }
                     
-                    # Create search URL
-                    search_url = f"https://www.google.com/search?q={quote_plus(query)}&num={max_results}"
+                    # Try different Google domains
+                    domains = ['www.google.com', 'www.google.co.uk', 'www.google.ca']
                     
-                    # Make request with timeout
-                    response = requests.get(search_url, headers=headers, timeout=10)
-                    
-                    if response.status_code != 200:
-                        logger.warning(f"Google search HTTP error: {response.status_code}")
-                        return []
-                    
-                    # Simple extraction of results (basic approach)
-                    html = response.text
-                    
-                    # Look for result links
-                    url_pattern = r'<a href="/url\?q=([^&]+)&amp;sa=U'
-                    urls = re.findall(url_pattern, html)
-                    
-                    # Clean URLs and create results
-                    search_results = []
-                    for i, url in enumerate(urls[:max_results]):
-                        if not url.startswith('http'):
+                    for domain in domains:
+                        try:
+                            search_url = f"https://{domain}/search?q={quote_plus(query)}&num={max_results}&hl=en"
+                            
+                            response = requests.get(search_url, headers=headers, timeout=8)
+                            
+                            if response.status_code == 200:
+                                html = response.text
+                                
+                                # Enhanced regex patterns for different Google result formats
+                                patterns = [
+                                    r'<a href="/url\?q=([^&]+)&amp;sa=U.*?<h3.*?>(.*?)</h3>.*?<span.*?>(.*?)</span>',
+                                    r'<a.*?href="([^"]*)".*?<h3.*?>(.*?)</h3>.*?<div.*?>(.*?)</div>',
+                                    r'<div class="g">.*?<a href="([^"]*)".*?<h3.*?>(.*?)</h3>.*?<span.*?>(.*?)</span>'
+                                ]
+                                
+                                scrape_results = []
+                                
+                                for pattern in patterns:
+                                    matches = re.findall(pattern, html, re.DOTALL)
+                                    
+                                    for i, match in enumerate(matches[:max_results]):
+                                        if len(match) >= 2:
+                                            url = match[0]
+                                            title = re.sub(r'<[^>]+>', '', match[1])[:100]
+                                            snippet = re.sub(r'<[^>]+>', '', match[2] if len(match) > 2 else '')[:200]
+                                            
+                                            if url.startswith('http') and title:
+                                                scrape_results.append({
+                                                    'title': title,
+                                                    'url': url,
+                                                    'snippet': snippet or f"Google search result for: {query}"
+                                                })
+                                    
+                                    if scrape_results:
+                                        logger.info(f"Web scraping successful from {domain}: {len(scrape_results)} results")
+                                        return scrape_results[:max_results]
+                            
+                            time.sleep(1)  # Rate limiting between domains
+                        except Exception as e:
+                            logger.warning(f"Scraping failed for {domain}: {e}")
                             continue
-                        
-                        search_results.append({
-                            'title': f'Google Result {i+1}',
-                            'url': url,
-                            'snippet': f'Search result from Google for: {query}'
-                        })
                     
-                    return search_results[:max_results]
+                    return []
                     
                 except Exception as e:
-                    logger.warning(f"Alternative Google search failed: {e}")
-                    # Fallback to original method
-                    try:
-                        time.sleep(1)  # Brief pause
-                        return list(google_search(query, num_results=max_results, sleep_interval=3))
-                    except Exception as e2:
-                        logger.warning(f"Fallback Google search also failed: {e2}")
-                        return []
+                    logger.warning(f"Web scraping approach failed: {e}")
+                    return []
             
-            search_data = await loop.run_in_executor(None, run_google_search)
+            # Strategy 4: Fallback to original googlesearch library
+            def try_googlesearch_library():
+                try:
+                    from googlesearch import search as google_search
+                    urls = list(google_search(query, num_results=max_results, sleep_interval=2, pause=1))
+                    
+                    lib_results = []
+                    for i, url in enumerate(urls[:max_results]):
+                        lib_results.append({
+                            'title': f'Google Result {i+1}',
+                            'url': url,
+                            'snippet': f'Google search result for: {query}'
+                        })
+                    
+                    if lib_results:
+                        logger.info(f"Googlesearch library successful: {len(lib_results)} results")
+                    return lib_results
+                except Exception as e:
+                    logger.warning(f"Googlesearch library failed: {e}")
+                    return []
+            
+            # Try strategies in order of preference
+            search_data = await try_google_api()
             
             if not search_data:
-                logger.warning("Google search returned no results")
-                return []
+                search_data = await try_serpapi()
             
+            if not search_data:
+                search_data = await loop.run_in_executor(None, try_web_scraping)
+            
+            if not search_data:
+                search_data = await loop.run_in_executor(None, try_googlesearch_library)
+            
+            # Convert results to SearchResult objects
             for item in search_data:
-                if isinstance(item, str):  # URL from original googlesearch library
-                    results.append(SearchResult(
-                        source=self.source,
-                        title=f"Google Result {len(results)+1}",
-                        url=item,
-                        snippet=f"Search result from Google for: {query}"
-                    ))
-                elif isinstance(item, dict):  # Result from alternative method
+                if isinstance(item, SearchResult):
+                    results.append(item)
+                elif isinstance(item, dict):
                     results.append(SearchResult(
                         source=self.source,
                         title=item.get('title', 'Google Result'),
                         url=item.get('url', ''),
-                        snippet=item.get('snippet', f"Search result from Google for: {query}")
+                        snippet=item.get('snippet', f"Google search result for: {query}")
+                    ))
+                elif isinstance(item, str):  # URL only
+                    results.append(SearchResult(
+                        source=self.source,
+                        title=f'Google Result {len(results)+1}',
+                        url=item,
+                        snippet=f"Google search result for: {query}"
                     ))
             
-            logger.info(f"Google search successful: {len(results)} results for '{query}'")
-            return results
+            if results:
+                logger.info(f"Google search successful: {len(results)} results for '{query}'")
+            else:
+                logger.warning(f"All Google search strategies failed for query: {query}")
+            
+            return results[:max_results]
             
         except Exception as e:
             logger.error(f"Google search error: {e}")
