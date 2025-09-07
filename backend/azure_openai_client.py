@@ -20,15 +20,25 @@ class AzureOpenAIClient:
         api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
         
         logger.info(f"Initializing Azure OpenAI client with endpoint: {endpoint}")
+        logger.info(f"API key exists: {bool(api_key)}")
         logger.info(f"API key length: {len(api_key) if api_key else 0}")
         logger.info(f"API version: {api_version}")
         
-        self.client = AsyncAzureOpenAI(
-            api_version=api_version,
-            azure_endpoint=endpoint,
-            api_key=api_key
-        )
-        self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "o3-mini")
+        if not api_key or not endpoint:
+            logger.error("Missing Azure OpenAI credentials")
+            raise ValueError("Azure OpenAI API key and endpoint are required")
+        
+        try:
+            self.client = AsyncAzureOpenAI(
+                api_version=api_version,
+                azure_endpoint=endpoint,
+                api_key=api_key
+            )
+            self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "o3-mini")
+            logger.info(f"Azure OpenAI client initialized successfully with deployment: {self.deployment_name}")
+        except Exception as e:
+            logger.error(f"Failed to initialize Azure OpenAI client: {e}")
+            raise
     
     async def synthesize_results(self, query: str, results: Dict[SearchSource, List[SearchResult]]) -> str:
         """Synthesize search results using Azure OpenAI"""
@@ -66,6 +76,8 @@ class AzureOpenAIClient:
         
         try:
             logger.info(f"Making Azure OpenAI API call with deployment: {self.deployment_name}")
+            logger.info(f"Request parameters: model={self.deployment_name}, max_completion_tokens=2000")
+            
             response = await self.client.chat.completions.create(
                 model=self.deployment_name,
                 messages=[
@@ -77,9 +89,22 @@ class AzureOpenAIClient:
             )
             
             logger.info("Azure OpenAI API call successful")
+            logger.info(f"Response received with {len(response.choices)} choices")
             return response.choices[0].message.content
+            
         except Exception as e:
+            import traceback
             logger.error(f"Azure OpenAI API call failed: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            
+            # Check if it's an authentication error
+            if "401" in str(e) or "unauthorized" in str(e).lower():
+                logger.error("Authentication error - checking credentials...")
+                logger.error(f"Using endpoint: {os.getenv('AZURE_OPENAI_ENDPOINT')}")
+                logger.error(f"Using deployment: {self.deployment_name}")
+                logger.error(f"Using API version: {os.getenv('AZURE_OPENAI_API_VERSION')}")
+            
             return f"Error synthesizing results: {str(e)}"
     
     def _format_results_for_ai(self, results: Dict[SearchSource, List[SearchResult]]) -> str:

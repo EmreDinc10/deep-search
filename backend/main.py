@@ -7,7 +7,7 @@ import time
 from typing import Dict
 import logging
 
-from models import SearchRequest, SearchResponse, SearchProgress, SearchSource
+from models import SearchRequest, SearchResponse, SearchProgress, SearchSource, SearchResult
 from search_modules import ParallelSearchManager
 from azure_openai_client import AzureOpenAIClient
 
@@ -63,6 +63,39 @@ async def debug_env():
         "azure_openai_api_key_exists": "YES" if os.getenv("AZURE_OPENAI_API_KEY") else "NO",
         "azure_openai_api_key_length": len(os.getenv("AZURE_OPENAI_API_KEY", "")) if os.getenv("AZURE_OPENAI_API_KEY") else 0
     }
+
+@app.get("/debug/azure-openai")
+async def debug_azure_openai():
+    """Debug endpoint to test Azure OpenAI connection"""
+    try:
+        # Test AI synthesis with simple data
+        test_results = {
+            SearchSource.WIKIPEDIA: [
+                SearchResult(
+                    source=SearchSource.WIKIPEDIA,
+                    title="Test Article",
+                    url="https://example.com",
+                    snippet="This is a test snippet for debugging Azure OpenAI integration."
+                )
+            ]
+        }
+        
+        synthesis_result = await openai_client.synthesize_results("test query", test_results)
+        
+        return {
+            "status": "success",
+            "message": "Azure OpenAI connection working",
+            "synthesis_length": len(synthesis_result),
+            "synthesis_preview": synthesis_result[:200] + "..." if len(synthesis_result) > 200 else synthesis_result
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        }
 
 @app.post("/search", response_model=SearchResponse)
 async def search(request: SearchRequest):
