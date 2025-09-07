@@ -51,6 +51,19 @@ async def health_check():
         "available_sources": [source.value for source in SearchSource]
     }
 
+@app.get("/debug/env")
+async def debug_env():
+    """Debug endpoint to check environment variables (for troubleshooting)"""
+    import os
+    
+    return {
+        "azure_openai_endpoint": os.getenv("AZURE_OPENAI_ENDPOINT", "NOT_SET"),
+        "azure_openai_deployment_name": os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "NOT_SET"),
+        "azure_openai_api_version": os.getenv("AZURE_OPENAI_API_VERSION", "NOT_SET"),
+        "azure_openai_api_key_exists": "YES" if os.getenv("AZURE_OPENAI_API_KEY") else "NO",
+        "azure_openai_api_key_length": len(os.getenv("AZURE_OPENAI_API_KEY", "")) if os.getenv("AZURE_OPENAI_API_KEY") else 0
+    }
+
 @app.post("/search", response_model=SearchResponse)
 async def search(request: SearchRequest):
     """Perform parallel search across multiple sources"""
