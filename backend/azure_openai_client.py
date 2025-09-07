@@ -1,6 +1,6 @@
 import os
 from typing import List, Dict
-from openai import AzureOpenAI
+from openai import AsyncAzureOpenAI
 from dotenv import load_dotenv
 
 from models import SearchResult, SearchSource
@@ -12,7 +12,7 @@ class AzureOpenAIClient:
     """Azure OpenAI client for synthesizing search results"""
     
     def __init__(self):
-        self.client = AzureOpenAI(
+        self.client = AsyncAzureOpenAI(
             api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
             api_key=os.getenv("AZURE_OPENAI_API_KEY")
@@ -50,7 +50,7 @@ class AzureOpenAIClient:
         """
         
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.deployment_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -109,7 +109,7 @@ class AzureOpenAIClient:
             """
             
             try:
-                response = self.client.chat.completions.create(
+                response = await self.client.chat.completions.create(
                     model=self.deployment_name,
                     messages=[
                         {"role": "user", "content": insight_prompt}
