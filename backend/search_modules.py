@@ -25,45 +25,94 @@ class SearchModule(ABC):
         pass
 
 class GoogleSearchModule(SearchModule):
-    """Google search using googlesearch-python library with enhanced error handling"""
+    """Google search using alternative approach with requests and parsing"""
     
     def __init__(self):
         super().__init__(SearchSource.GOOGLE)
     
     async def search(self, query: str, max_results: int = 5) -> List[SearchResult]:
         try:
+            import requests
+            from urllib.parse import quote_plus
+            import re
+            import time
+            
             results = []
             loop = asyncio.get_event_loop()
             
-            # Enhanced Google search with better parameters
             def run_google_search():
                 try:
-                    # Use more conservative settings to avoid rate limiting
-                    return list(google_search(
-                        query, 
-                        num_results=max_results,
-                        sleep_interval=2,  # Increased sleep interval
-                        lang='en',
-                        safe='off',
-                        pause=2.0  # Additional pause parameter
-                    ))
+                    # Use a more reliable approach with requests
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Accept-Encoding': 'gzip, deflate',
+                        'Connection': 'keep-alive',
+                    }
+                    
+                    # Create search URL
+                    search_url = f"https://www.google.com/search?q={quote_plus(query)}&num={max_results}"
+                    
+                    # Make request with timeout
+                    response = requests.get(search_url, headers=headers, timeout=10)
+                    
+                    if response.status_code != 200:
+                        logger.warning(f"Google search HTTP error: {response.status_code}")
+                        return []
+                    
+                    # Simple extraction of results (basic approach)
+                    html = response.text
+                    
+                    # Look for result links
+                    url_pattern = r'<a href="/url\?q=([^&]+)&amp;sa=U'
+                    urls = re.findall(url_pattern, html)
+                    
+                    # Clean URLs and create results
+                    search_results = []
+                    for i, url in enumerate(urls[:max_results]):
+                        if not url.startswith('http'):
+                            continue
+                        
+                        search_results.append({
+                            'title': f'Google Result {i+1}',
+                            'url': url,
+                            'snippet': f'Search result from Google for: {query}'
+                        })
+                    
+                    return search_results[:max_results]
+                    
                 except Exception as e:
-                    logger.warning(f"Google search attempt failed: {e}")
-                    return []
+                    logger.warning(f"Alternative Google search failed: {e}")
+                    # Fallback to original method
+                    try:
+                        time.sleep(1)  # Brief pause
+                        return list(google_search(query, num_results=max_results, sleep_interval=3))
+                    except Exception as e2:
+                        logger.warning(f"Fallback Google search also failed: {e2}")
+                        return []
             
-            urls = await loop.run_in_executor(None, run_google_search)
+            search_data = await loop.run_in_executor(None, run_google_search)
             
-            if not urls:
-                logger.warning("Google search returned no results - might be rate limited")
+            if not search_data:
+                logger.warning("Google search returned no results")
                 return []
             
-            for i, url in enumerate(urls[:max_results]):
-                results.append(SearchResult(
-                    source=self.source,
-                    title=f"Google Result {i+1}",
-                    url=url,
-                    snippet=f"Search result from Google for: {query}"
-                ))
+            for item in search_data:
+                if isinstance(item, str):  # URL from original googlesearch library
+                    results.append(SearchResult(
+                        source=self.source,
+                        title=f"Google Result {len(results)+1}",
+                        url=item,
+                        snippet=f"Search result from Google for: {query}"
+                    ))
+                elif isinstance(item, dict):  # Result from alternative method
+                    results.append(SearchResult(
+                        source=self.source,
+                        title=item.get('title', 'Google Result'),
+                        url=item.get('url', ''),
+                        snippet=item.get('snippet', f"Search result from Google for: {query}")
+                    ))
             
             logger.info(f"Google search successful: {len(results)} results for '{query}'")
             return results

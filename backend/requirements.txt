@@ -8,6 +8,7 @@ duckduckgo-search>=4.0.0
 wikipedia==1.4.0
 praw==7.7.1
 httpx==0.25.2
+requests==2.31.0
 asyncio-throttle==1.0.2
 pydantic==2.9.2
 python-multipart==0.0.6
