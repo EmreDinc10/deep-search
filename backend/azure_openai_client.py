@@ -78,13 +78,13 @@ class AzureOpenAIClient:
             logger.info(f"Making Azure OpenAI API call with deployment: {self.deployment_name}")
             logger.info(f"Request parameters: model={self.deployment_name}, max_completion_tokens=2000")
             
+            # o3-mini model doesn't support temperature parameter, only max_completion_tokens
             response = await self.client.chat.completions.create(
                 model=self.deployment_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.7,
                 max_completion_tokens=2000
             )
             
@@ -152,12 +152,12 @@ class AzureOpenAIClient:
             """
             
             try:
+                # o3-mini model doesn't support temperature parameter
                 response = await self.client.chat.completions.create(
                     model=self.deployment_name,
                     messages=[
                         {"role": "user", "content": insight_prompt}
                     ],
-                    temperature=0.5,
                     max_completion_tokens=300
                 )
                 
