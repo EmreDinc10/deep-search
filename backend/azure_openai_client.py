@@ -12,15 +12,30 @@ class AzureOpenAIClient:
     """Azure OpenAI client for synthesizing search results"""
     
     def __init__(self):
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
+        
+        logger.info(f"Initializing Azure OpenAI client with endpoint: {endpoint}")
+        logger.info(f"API key length: {len(api_key) if api_key else 0}")
+        logger.info(f"API version: {api_version}")
+        
         self.client = AsyncAzureOpenAI(
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            api_key=os.getenv("AZURE_OPENAI_API_KEY")
+            api_version=api_version,
+            azure_endpoint=endpoint,
+            api_key=api_key
         )
         self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "o3-mini")
     
     async def synthesize_results(self, query: str, results: Dict[SearchSource, List[SearchResult]]) -> str:
         """Synthesize search results using Azure OpenAI"""
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Starting AI synthesis for query: {query}")
         
         # Format results for the AI
         formatted_results = self._format_results_for_ai(results)
@@ -50,6 +65,7 @@ class AzureOpenAIClient:
         """
         
         try:
+            logger.info(f"Making Azure OpenAI API call with deployment: {self.deployment_name}")
             response = await self.client.chat.completions.create(
                 model=self.deployment_name,
                 messages=[
@@ -60,8 +76,10 @@ class AzureOpenAIClient:
                 max_completion_tokens=2000
             )
             
+            logger.info("Azure OpenAI API call successful")
             return response.choices[0].message.content
         except Exception as e:
+            logger.error(f"Azure OpenAI API call failed: {str(e)}")
             return f"Error synthesizing results: {str(e)}"
     
     def _format_results_for_ai(self, results: Dict[SearchSource, List[SearchResult]]) -> str:
